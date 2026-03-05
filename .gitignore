@@ -1,0 +1,28 @@
+# Research materials (not needed in deployed projects)
+research/
+
+# Cloned repos at root level
+awesome-cursor-rules-mdc/
+claude-code-skill-factory/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node (from npx in research)
+node_modules/
+package-lock.json
+
+# Claude Code local settings (user-specific permissions)
+.claude/settings.local.json
+
+# Environment
+.env
+.env.*
+!.env.example
