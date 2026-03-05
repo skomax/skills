@@ -19,7 +19,10 @@ Run through production deployment checklist before deploying.
 2. Run full test suite in CI
 3. Build production Docker images
 4. Run database migrations
-5. Deploy with zero-downtime strategy
+5. Deploy:
+   - **Docker Compose**: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans`
+   - **Kamal** (Rails): `kamal deploy`
+   - **K8s**: `kubectl apply -f k8s/` or Helm upgrade
 6. Verify health endpoints
 7. Monitor logs for 15 minutes post-deploy
 
@@ -32,9 +35,15 @@ Run through production deployment checklist before deploying.
 
 ### Rollback Procedure
 ```bash
-# Quick rollback to previous version
-docker compose -f docker-compose.yml -f docker-compose.prod.yml down
-git checkout <previous-tag>
+# Docker Compose: redeploy previous image tag
+docker compose -f docker-compose.yml -f docker-compose.prod.yml pull  # previous images
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 alembic downgrade -1  # If migration needs reversal
+
+# Kamal rollback
+# kamal rollback
+
+# If using CI/CD: re-run the previous successful pipeline
 ```
+
+See also: `/test:run` for pre-deployment test verification

@@ -1,6 +1,6 @@
 ---
 name: web3-defi
-description: Web3, DeFi, and blockchain development. Uniswap v3/v4 liquidity pools, on-chain data, multi-chain support (Ethereum, BNB, Base), Python web3.py, and Solidity patterns.
+description: Web3, DeFi, and blockchain development. Uniswap v3/v4 liquidity pools, on-chain data, multi-chain support (Ethereum, BNB, Base, Solana), Python web3.py, and Solidity patterns.
 ---
 
 # Web3 & DeFi Development Skill
@@ -9,8 +9,9 @@ description: Web3, DeFi, and blockchain development. Uniswap v3/v4 liquidity poo
 - Working with blockchain, smart contracts, DeFi protocols
 - Uniswap liquidity pool simulation or interaction
 - On-chain data fetching and processing
-- Multi-chain development (Ethereum, BNB Chain, Base, Arbitrum)
+- Multi-chain development (Ethereum, BNB Chain, Base, Arbitrum, Solana)
 - Token/pool analytics and strategy calculations
+- Block explorer API integration
 
 ## Key Libraries
 
@@ -23,6 +24,13 @@ description: Web3, DeFi, and blockchain development. Uniswap v3/v4 liquidity poo
 | **viem 2.x** | TS | Modern alternative to ethers, better types |
 | **foundry** | Solidity | Smart contract development, testing |
 | **hardhat** | JS/TS | Smart contract development, deployment |
+| **solana-py** | Python | Solana RPC interaction |
+| **solders** | Python | Solana data structures, keypairs |
+
+## Sub-Files (read when working on specific topics)
+- **`uniswap-v3.md`** — Tick system, position NFT lifecycle, fee growth internals, capital efficiency math, contract addresses
+- **`uniswap-v4.md`** — Singleton architecture, flash accounting, hooks deep dive, dynamic fees, deployment addresses
+- **`explorer-apis.md`** — Etherscan/BscScan/BaseScan/Solscan API structure, Python client, DeFi data patterns
 
 ## Uniswap v3 Liquidity Pool Concepts
 
@@ -61,32 +69,106 @@ def tick_to_sqrt_price_x96(tick: int) -> int:
 ```
 
 ### Fee Calculation
-```python
-def calculate_fees(
-    liquidity: int,
-    tick_lower: int,
-    tick_upper: int,
-    current_tick: int,
-    fee_growth_global_0: int,
-    fee_growth_global_1: int,
-    fee_growth_outside_lower_0: int,
-    fee_growth_outside_lower_1: int,
-    fee_growth_outside_upper_0: int,
-    fee_growth_outside_upper_1: int,
-) -> tuple[float, float]:
-    """Calculate uncollected fees for a position."""
-    # Fee growth inside the position range
-    if current_tick >= tick_lower and current_tick < tick_upper:
-        fee_growth_inside_0 = fee_growth_global_0 - fee_growth_outside_lower_0 - fee_growth_outside_upper_0
-        fee_growth_inside_1 = fee_growth_global_1 - fee_growth_outside_lower_1 - fee_growth_outside_upper_1
-    # ... handle other cases
+For the complete fee calculation pipeline with fee growth internals, see `uniswap-v3.md`.
 
-    fees_0 = (fee_growth_inside_0 * liquidity) / (2 ** 128)
-    fees_1 = (fee_growth_inside_1 * liquidity) / (2 ** 128)
-    return fees_0, fees_1
+Quick reference — fee tiers and tick spacing:
+| Fee | Bps | tickSpacing | Use Case |
+|-----|-----|-------------|----------|
+| 100 | 1 | 1 | Ultra-stable (USDC/USDT) |
+| 500 | 5 | 10 | Stable pairs |
+| 3000 | 30 | 60 | Standard (ETH/USDC) |
+| 10000 | 100 | 200 | High volatility |
+
+## Uniswap Protocol Fees (UNIfication — December 2025)
+
+Since the UNIfication governance vote (December 25, 2025), Uniswap has a transparent protocol fee layer:
+
+### Fee Split Structure
+| Pool Type | Total Fee | LP Share | Protocol Share | Protocol % |
+|-----------|-----------|----------|----------------|------------|
+| V2 pools | 0.30% | 0.25% | 0.05% | 16.7% |
+| Low-fee (0.01-0.05%) | varies | 75% | 25% | 25% |
+| Standard (0.3%) | 0.30% | 0.25% | 0.05% | 16.7% |
+| High-vol (1%) | 1.00% | 0.833% | 0.167% | 16.7% |
+
+### Where Protocol Revenue Goes
+- Revenue directed to **UNI token buyback and burn** (on-chain, transparent)
+- Executed via governance-controlled contracts with 2-day timelock
+
+### Frontend Fee History
+- Uniswap Labs previously charged a **0.25% frontend/interface fee** on swaps via their web app
+- After UNIfication, the web interface fee was **set to zero**
+- Protocol-level fees replaced interface-level fees
+
+### Impact on LP Calculations
+When calculating expected LP returns, account for the protocol fee:
+```python
+def effective_lp_fee_rate(fee_tier: int) -> float:
+    """Calculate the actual fee rate LPs receive after protocol cut."""
+    protocol_share = 0.25 if fee_tier <= 500 else 0.167
+    return fee_tier / 1_000_000 * (1 - protocol_share)
+
+# Example: 0.3% pool -> LPs earn 0.25% per swap (not 0.3%)
 ```
 
-### Pool Simulation Strategy
+## Out-of-Range Position Behavior
+
+### No Liquidation
+Uniswap v3 positions are **never liquidated**. When price exits your range, the position simply stops earning fees.
+
+### Token Composition at Boundaries
+```
+Price BELOW tickLower:  Position = 100% token1, 0% token0
+Price IN RANGE:         Position = mix of token0 and token1
+Price ABOVE tickUpper:  Position = 100% token0, 0% token1
+```
+
+Think of it as a limit order that gradually executes:
+- If you provide ETH/USDC liquidity in range [1800, 2200]:
+  - Price drops to 1500: you hold 100% ETH (bought ETH as price fell)
+  - Price rises to 2500: you hold 100% USDC (sold ETH as price rose)
+
+### Token Amounts at Boundaries
+```python
+def token_amounts_at_price(
+    liquidity: int,
+    sqrt_price_x96: int,
+    tick_lower: int,
+    tick_upper: int,
+) -> tuple[int, int]:
+    """Calculate token0 and token1 amounts for a position at current price."""
+    sqrt_a = tick_to_sqrt_price_x96(tick_lower) / (2**96)
+    sqrt_b = tick_to_sqrt_price_x96(tick_upper) / (2**96)
+    sqrt_p = sqrt_price_x96 / (2**96)
+
+    if sqrt_p <= sqrt_a:
+        # Below range: all token0
+        amount0 = int(liquidity * (1/sqrt_a - 1/sqrt_b))
+        amount1 = 0
+    elif sqrt_p >= sqrt_b:
+        # Above range: all token1
+        amount0 = 0
+        amount1 = int(liquidity * (sqrt_b - sqrt_a))
+    else:
+        # In range: both tokens
+        amount0 = int(liquidity * (1/sqrt_p - 1/sqrt_b))
+        amount1 = int(liquidity * (sqrt_p - sqrt_a))
+
+    return amount0, amount1
+```
+
+### Rebalance vs Hold Decision
+| Factor | Rebalance | Hold (Wait) |
+|--------|-----------|-------------|
+| Gas costs | High (remove + swap + add) | Zero |
+| Expected return to range | Unlikely | Likely |
+| Time out of range | Long (>24h) | Short (<1h) |
+| IL accumulated | Significant | Minimal |
+| Gas prices | Low (<30 gwei) | High (>100 gwei) |
+
+Rule of thumb: Rebalance when `expected_fee_earnings > rebalance_cost * 2`.
+
+## Pool Simulation Strategy
 ```python
 @dataclass
 class SimulationConfig:
@@ -112,7 +194,7 @@ class PoolSimulator:
         """Run full simulation over historical data."""
         position = self._open_position(self.data.iloc[0])
 
-        for _, row in self.data.iterrows():
+        for row in self.data.itertuples():
             if self._is_price_out_of_range(row.price, position):
                 if self.config.rebalance:
                     position = self._rebalance(position, row)
@@ -129,9 +211,9 @@ class PoolSimulator:
 
 ## On-Chain Data Fetching
 
-### Using web3.py
+### Using web3.py (async)
 ```python
-from web3 import Web3
+from web3 import AsyncWeb3
 
 # Multi-chain RPC endpoints
 CHAINS = {
@@ -139,20 +221,27 @@ CHAINS = {
     "bnb": "https://bsc-dataseed.binance.org",
     "base": "https://mainnet.base.org",
     "arbitrum": "https://arb1.arbitrum.io/rpc",
+    "polygon": "https://polygon-rpc.com",
+    "solana": "https://api.mainnet-beta.solana.com",  # Not web3.py — use solana-py
 }
 
-async def get_pool_data(chain: str, pool_address: str) -> dict:
-    w3 = Web3(Web3.HTTPProvider(CHAINS[chain]))
+async def get_pool_data(chain: str, pool_address: str, decimals0: int = 6, decimals1: int = 18) -> dict:
+    w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(CHAINS[chain]))
     pool_contract = w3.eth.contract(address=pool_address, abi=UNISWAP_V3_POOL_ABI)
 
-    slot0 = pool_contract.functions.slot0().call()
-    liquidity = pool_contract.functions.liquidity().call()
+    slot0 = await pool_contract.functions.slot0().call()
+    liquidity = await pool_contract.functions.liquidity().call()
+
+    # Convert sqrtPriceX96 to human-readable price (accounting for token decimals)
+    sqrt_price = slot0[0] / (2**96)
+    raw_price = sqrt_price ** 2
+    price = raw_price * (10 ** decimals0) / (10 ** decimals1)
 
     return {
         "sqrt_price_x96": slot0[0],
         "tick": slot0[1],
         "liquidity": liquidity,
-        "price": (slot0[0] / (2**96)) ** 2,
+        "price": price,
     }
 ```
 
@@ -234,9 +323,13 @@ class RebalancingStrategy:
 def calculate_impermanent_loss(
     price_ratio: float,  # current_price / entry_price
 ) -> float:
-    """Calculate IL as percentage loss vs holding.
+    """Calculate IL as percentage loss vs holding (x*y=k AMM formula).
     price_ratio = 1.0 means no change, 2.0 means price doubled.
     Returns negative value (e.g., -0.057 = 5.7% loss).
+    NOTE: For Uniswap v3 concentrated liquidity, IL is amplified
+    proportionally to the concentration factor. This formula gives
+    a lower bound; actual IL depends on the position's tick range.
+    See uniswap-v3.md for concentrated_il() function.
     """
     return 2 * math.sqrt(price_ratio) / (1 + price_ratio) - 1
 
@@ -256,111 +349,96 @@ def net_pnl_vs_hold(
 
 ## Uniswap v4 Architecture
 
-### Singleton PoolManager
-All pools live in one contract. No separate contracts per pool.
-```python
-# v3: each pool is a separate contract
-pool_v3 = w3.eth.contract(address=POOL_ADDRESS, abi=V3_POOL_ABI)
+For full v4 documentation see `uniswap-v4.md`. Key concepts:
 
-# v4: interact via PoolManager
-pool_manager = w3.eth.contract(address=POOL_MANAGER_ADDRESS, abi=V4_MANAGER_ABI)
-pool_key = {
-    "currency0": token0_address,
-    "currency1": token1_address,
-    "fee": 3000,
-    "tickSpacing": 60,
-    "hooks": hook_contract_address,  # Custom hook
-}
-```
-
-### Hook Lifecycle Callbacks
-```solidity
-// Solidity hook contract structure
-import {BaseHook} from "v4-periphery/src/utils/BaseHook.sol";
-import {Hooks} from "v4-core/src/libraries/Hooks.sol";
-
-contract MyHook is BaseHook {
-    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
-        return Hooks.Permissions({
-            beforeInitialize: false,
-            afterInitialize: true,
-            beforeAddLiquidity: false,
-            afterAddLiquidity: false,
-            beforeRemoveLiquidity: false,
-            afterRemoveLiquidity: false,
-            beforeSwap: true,       // Dynamic fee logic here
-            afterSwap: true,        // Analytics, TWAP updates
-            beforeDonate: false,
-            afterDonate: false,
-            beforeSwapReturnDelta: false,
-            afterSwapReturnDelta: false,
-            afterAddLiquidityReturnDelta: false,
-            afterRemoveLiquidityReturnDelta: false
-        });
-    }
-
-    function beforeSwap(
-        address sender,
-        PoolKey calldata key,
-        IPoolManager.SwapParams calldata params,
-        bytes calldata hookData
-    ) external override returns (bytes4, BeforeSwapDelta, uint24) {
-        // Custom logic: dynamic fees based on volatility
-        uint24 dynamicFee = calculateDynamicFee(key);
-        return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, dynamicFee);
-    }
-}
-```
-
-### Python Orchestration for v4
-```python
-class UniswapV4Client:
-    def __init__(self, w3: Web3, pool_manager_address: str):
-        self.w3 = w3
-        self.manager = w3.eth.contract(address=pool_manager_address, abi=V4_MANAGER_ABI)
-
-    def get_pool_state(self, pool_key: dict) -> dict:
-        pool_id = self.manager.functions.getPoolId(pool_key).call()
-        slot0 = self.manager.functions.getSlot0(pool_id).call()
-        liquidity = self.manager.functions.getLiquidity(pool_id).call()
-        return {"pool_id": pool_id, "tick": slot0[1], "liquidity": liquidity}
-
-    def simulate_swap(self, pool_key: dict, amount_in: int, zero_for_one: bool) -> int:
-        """Simulate swap to estimate output amount."""
-        # Use Quoter contract for simulation
-        return self.quoter.functions.quoteExactInputSingle(
-            pool_key, zero_for_one, amount_in, 0, b""
-        ).call()
-```
+- **Singleton PoolManager**: All pools in one contract, no factory deployment
+- **Flash Accounting**: Delta-based accounting with EIP-1153 transient storage — only net token transfers
+- **Hooks**: Custom logic at 14 lifecycle points (beforeSwap, afterSwap, etc.)
+- **Dynamic Fees**: Set fee to `0x800000`, hook returns actual fee per swap
+- **PoolKey**: `(currency0, currency1, fee, tickSpacing, hooks)` identifies each pool
 
 ## Multi-Chain DEX Protocols
 
-| Chain | DEX | Fork Of | Key Difference |
-|-------|-----|---------|----------------|
-| Ethereum | Uniswap v3/v4 | Original | Reference implementation |
-| BNB Chain | PancakeSwap v3 | Uniswap v3 | Lower fees, CAKE rewards |
-| Base | Aerodrome | Velodrome/Uni v3 | ve(3,3) tokenomics, vote-directed emissions |
-| Arbitrum | Camelot | Custom | Concentrated + volatile pools, spNFT positions |
-| Polygon | QuickSwap v3 | Uniswap v3 | Algebra integration, dynamic fees |
+| Chain | DEX | Fork Of | Key Difference | Fee Structure |
+|-------|-----|---------|----------------|---------------|
+| Ethereum | Uniswap v3/v4 | Original | Reference implementation | 0.01-1% (LP share after protocol cut) |
+| BNB Chain | PancakeSwap v3 | Uniswap v3 | Lower fees, CAKE rewards | 0.25% total: 0.17% LP, 0.08% protocol |
+| Base | Aerodrome | Velodrome/Uni v3 | ve(3,3) tokenomics, vote-directed emissions | Variable, governance-set |
+| Arbitrum | Camelot | Custom | Concentrated + volatile pools, spNFT positions | Dual (volatile + stable) |
+| Polygon | QuickSwap v3 | Uniswap v3 | Algebra integration, dynamic fees | Dynamic (volatility-based) |
+| Solana | Raydium | Custom (not EVM) | AMM on Solana, classic + concentrated | 0.25% standard |
+| Solana | Orca | Custom (not EVM) | Whirlpool concentrated liquidity | Variable per pool |
+| Unichain | Uniswap v4 | Original | Uniswap's own L2, lowest fees | Same as Uniswap v4 |
+
+### Solana DEX Notes
+Solana is **not EVM-compatible** — uses programs (smart contracts), accounts model, and SPL tokens:
+- Use `solana-py` or `solders` instead of web3.py
+- Raydium: classic pools (x*y=k) and Fusion pools
+- Orca: Whirlpool concentrated liquidity (similar concept to Uniswap v3 ticks)
+- Pool creation via UI, SDK, or CPI (Cross-Program Invocation)
 
 ```python
-# Multi-chain pool factory
+# Multi-chain pool factory (EVM chains only)
 DEX_CONFIGS = {
-    "uniswap_v3_eth": {"factory": "0x1F98...", "chain": "ethereum", "abi": UNI_V3_ABI},
-    "pancake_v3_bnb": {"factory": "0x0BF...", "chain": "bnb", "abi": PANCAKE_V3_ABI},
-    "aerodrome_base": {"factory": "0x420...", "chain": "base", "abi": AERO_ABI},
+    "uniswap_v3_eth": {"factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984", "chain": "ethereum", "abi": UNI_V3_ABI},
+    "pancake_v3_bnb": {"factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865", "chain": "bnb", "abi": PANCAKE_V3_ABI},
+    "aerodrome_base": {"factory": "0x420DD381b31aEf6683db6B902084cB0FFECe40Da", "chain": "base", "abi": AERO_ABI},
 }
 
 async def get_pool_across_chains(token_pair: str) -> list[dict]:
-    """Find best pool for a pair across all supported chains."""
+    """Find best pool for a pair across all supported EVM chains."""
     results = []
     for dex_name, config in DEX_CONFIGS.items():
-        w3 = Web3(Web3.HTTPProvider(CHAINS[config["chain"]]))
+        w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(CHAINS[config["chain"]]))
         pool = await find_pool(w3, config, token_pair)
         if pool:
             results.append({"dex": dex_name, **pool})
     return sorted(results, key=lambda x: x["liquidity"], reverse=True)
 ```
+
+## Flash Loans & Flash Swaps
+
+### Uniswap v3 Flash
+Borrow any amount of token0 and/or token1 from a pool, use them, and repay with fee in a single transaction:
+```python
+# Flash loan fee = pool fee tier (e.g., 0.3% for 3000 tier)
+# Must repay: amount + fee within the same transaction
+# Use case: arbitrage, liquidations, collateral swaps
+```
+
+### Uniswap v4 Flash Accounting
+v4's flash accounting makes flash-loan-like patterns native:
+- Execute multiple operations in `unlockCallback`
+- Only net balances settled at the end
+- No need for explicit flash loan contracts
+
+## MEV Protection
+
+### Strategies
+- **Flashbots Protect**: Submit transactions via `https://rpc.flashbots.net` instead of public mempool
+- **Private mempools**: MEV Blocker (`https://rpc.mevblocker.io`), MEV Share
+- **Slippage limits**: Always set `amountOutMin` / `sqrtPriceLimitX96`
+- **Deadline parameter**: Set tight deadlines to prevent stale transaction execution
+
+```python
+# Using Flashbots Protect RPC
+FLASHBOTS_RPC = "https://rpc.flashbots.net"
+w3_protected = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(FLASHBOTS_RPC))
+# Transactions sent via this RPC are not visible in the public mempool
+```
+
+## Multi-Hop Routing
+
+For complex swaps, use DEX aggregators instead of direct pool interaction:
+
+| Aggregator | API | Chains |
+|------------|-----|--------|
+| **1inch** | `https://api.1inch.dev/swap/v6.0/{chainId}/swap` | All major EVM |
+| **0x** | `https://api.0x.org/swap/v1/quote` | All major EVM |
+| **Jupiter** | `https://quote-api.jup.ag/v6/quote` | Solana |
+| **Paraswap** | `https://apiv5.paraswap.io/prices` | All major EVM |
+
+Aggregators find optimal routing across multiple pools and DEXes, splitting trades for better prices.
 
 ## Security Checklist
 
@@ -372,3 +450,13 @@ async def get_pool_across_chains(token_pair: str) -> list[dict]:
 - [ ] Monitor gas prices before transactions
 - [ ] Implement circuit breakers for automated strategies
 - [ ] Verify token approvals are for exact amounts (not unlimited)
+- [ ] Use Flashbots or private mempool for MEV-sensitive transactions
+- [ ] Set deadline parameters on all swap transactions
+
+## See Also
+- `uniswap-v3.md` — tick system, position NFTs, fee growth internals, capital efficiency
+- `uniswap-v4.md` — singleton architecture, flash accounting, hooks, dynamic fees
+- `explorer-apis.md` — Etherscan/BscScan/Solscan API reference, Python client
+- `database-patterns` skill for storing on-chain data
+- `data-processing` skill for historical data analysis
+- `docker-devops` skill for deployment of monitoring services

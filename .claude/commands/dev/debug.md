@@ -4,6 +4,8 @@ Debug an issue using systematic approach.
 
 ## Instructions
 
+If `$ARGUMENTS` is provided, use it as the error description or file path to investigate.
+
 ### Phase 1: Reproduce
 1. Get exact error message or unexpected behavior description
 2. Find the minimal steps to reproduce
@@ -17,7 +19,7 @@ Debug an issue using systematic approach.
 4. Check if the issue is in our code or a dependency
 
 ### Phase 3: Diagnose
-1. Add targeted logging around the failing code
+1. Add targeted logging around the failing code (remember to remove debug logging after fix)
 2. Check input data - is it what we expect?
 3. Check environment: env vars, DB state, external service status
 4. For Docker issues: `docker compose logs --tail=100 <service>`
@@ -34,6 +36,8 @@ Debug an issue using systematic approach.
 1. Add a comment explaining WHY the fix works (if not obvious)
 2. Update CHANGELOG.md if it's a notable fix
 3. Commit with: `fix: <description of what was broken>`
+
+See also: `/dev:tdd` for writing the regression test
 
 ### Common Debug Commands
 ```bash

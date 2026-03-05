@@ -63,7 +63,31 @@ async def main():
     await load_extensions()
     await bot.start(os.getenv("DISCORD_TOKEN"))
 
+import asyncio
 asyncio.run(main())
+```
+
+### Hybrid Commands (work as both prefix and slash commands)
+```python
+import discord
+from discord.ext import commands
+
+@bot.hybrid_command(name="ping", description="Check bot latency")
+async def ping(ctx):
+    """Works as both !ping and /ping."""
+    latency = round(bot.latency * 1000)
+    await ctx.send(f"Pong! {latency}ms")
+
+@bot.hybrid_command(name="avatar", description="Get a user avatar")
+async def avatar(ctx, member: discord.Member = None):
+    """Display a user's avatar."""
+    member = member or ctx.author
+    embed = discord.Embed(title=f"{member.display_name}'s Avatar")
+    embed.set_image(url=member.display_avatar.url)
+    await ctx.send(embed=embed)
+
+# Don't forget to sync the command tree on startup:
+# await bot.tree.sync()
 ```
 
 ### Cog with Slash Commands
@@ -113,10 +137,22 @@ class Events(commands.Cog):
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
-        if isinstance(error, commands.MissingPermissions):
-            await ctx.send("You don't have permission to use this command.")
+        if isinstance(error, commands.CommandNotFound):
+            return  # Silently ignore unknown commands
+        elif isinstance(error, commands.MissingPermissions):
+            perms = ", ".join(error.missing_permissions)
+            await ctx.send(f"Missing permissions: {perms}")
+        elif isinstance(error, commands.MissingRequiredArgument):
+            await ctx.send(f"Missing argument: `{error.param.name}`")
+        elif isinstance(error, commands.BadArgument):
+            await ctx.send(f"Invalid argument: {error}")
         elif isinstance(error, commands.CommandOnCooldown):
             await ctx.send(f"Cooldown: try again in {error.retry_after:.1f}s")
+        elif isinstance(error, commands.CheckFailure):
+            await ctx.send("You do not have permission to use this command.")
+        else:
+            print(f"Unexpected error: {error}")
+            await ctx.send("An unexpected error occurred.")
 ```
 
 ## discord.js 14.x Structure

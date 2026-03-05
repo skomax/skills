@@ -36,17 +36,24 @@ Commands in `.claude/commands/` provide structured workflows:
 - **Telegram bots**: Python + aiogram 3.x (async, modern API)
 - **Telegram userbots**: Python + Telethon or Pyrogram (MTProto)
 - **Discord bots**: Python discord.py 2.x or Node.js discord.js 14.x
-- **REST API backend**: Python FastAPI 0.115+ or Node.js Express 5.x
-- **Full-stack web (React)**: Next.js 15 + React 19 + Tailwind CSS 4
-- **Full-stack web (Ruby)**: Ruby on Rails 8 + Hotwire + Tailwind CSS
-- **SaaS dashboards**: Next.js 15 + shadcn/ui + Supabase
+- **REST API backend**: Python FastAPI 0.128+ or Node.js Express 5.x
+- **Full-stack web (React)**: Next.js 16 + React 19 + Tailwind CSS 4
+- **Full-stack web (Ruby)**: Ruby on Rails 8 + Hotwire + Solid Queue/Cache + Kamal
+- **SaaS dashboards**: Next.js 16 + shadcn/ui + Supabase
 - **Web3/DeFi**: Python web3.py 7+ / ethers.js 6.x + Solidity 0.8.x
 - **Data processing**: Python pandas 2.x + numpy 2.x (or polars for speed)
 - **Document/OCR processing**: Python + Anthropic SDK (Claude Vision)
 - **Task queues**: Celery 5.x (Python) or BullMQ (Node.js)
 - **Containerization**: Docker Compose for dev, Kubernetes for production
 
+## Project Conventions
+- Test coverage threshold: 80% on critical paths
+- Python: use `ruff` for formatting + linting (replaces black + isort + flake8)
+- Python async: always use `AsyncAnthropic`, `AsyncWeb3`, `async_sessionmaker`
+- Never use deprecated `datetime.utcnow()` — use `datetime.now(timezone.utc)`
+
 ## Version Policy
 Always verify and use the latest stable versions of frameworks.
-Before starting a new project, check current versions via package registries.
+Before starting a new project, check current versions via context7 MCP (`resolve-library-id` -> `query-docs`).
 Never use deprecated or end-of-life versions.
+See `.claude/rules/07-version-verification.md` for the version reference table and verification workflow.

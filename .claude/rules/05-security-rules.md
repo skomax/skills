@@ -1,6 +1,14 @@
 ---
 paths:
-  - "**/*"
+  - "**/*.py"
+  - "**/*.js"
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "**/*.sol"
+  - "**/*.rb"
+  - "**/Dockerfile*"
+  - "**/docker-compose*.yml"
+  - "**/.env*"
 ---
 # Security Rules
 

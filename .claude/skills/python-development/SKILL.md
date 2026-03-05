@@ -39,12 +39,14 @@ project/
 [project]
 requires-python = ">=3.10"
 
-[tool.black]
-line-length = 88
-
 [tool.ruff]
 line-length = 88
+
+[tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
+
+[tool.ruff.format]
+quote-style = "double"
 
 [tool.mypy]
 python_version = "3.10"
@@ -69,19 +71,19 @@ def process_items(items: list[str], limit: int | None = None) -> dict[str, int]:
 ### Async/Await for I/O
 ```python
 import asyncio
-import aiohttp
+import httpx
 
 async def fetch_data(urls: list[str]) -> list[dict]:
-    async with aiohttp.ClientSession() as session:
-        tasks = [session.get(url) for url in urls]
+    async with httpx.AsyncClient() as client:
+        tasks = [client.get(url) for url in urls]
         responses = await asyncio.gather(*tasks, return_exceptions=True)
-        return [await r.json() for r in responses if not isinstance(r, Exception)]
+        return [r.json() for r in responses if not isinstance(r, Exception)]
 ```
 
 ### Dataclasses for Models
 ```python
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 @dataclass
 class Position:
@@ -92,7 +94,7 @@ class Position:
     lower_tick: int
     upper_tick: int
     liquidity: int
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 ```
 
 ### Context Managers for Resources
@@ -141,8 +143,8 @@ except httpx.HTTPStatusError as e:
 
 ## Tooling Commands
 ```bash
-# Format
-black . && isort .
+# Format + sort imports (ruff replaces black + isort)
+ruff format .
 # Lint
 ruff check . --fix
 # Type check

@@ -254,6 +254,8 @@ async def generate_session():
         print("Session string:", client.session.save())
 
 # Multi-account management
+# WARNING: Telegram actively bans automated accounts.
+# Using multiple userbots may violate Telegram ToS. Use at your own risk.
 class AccountPool:
     def __init__(self, sessions: list[str]):
         self.clients = [
@@ -402,3 +404,8 @@ services:
       db: { condition: service_healthy }
       redis: { condition: service_started }
 ```
+
+## See Also
+- `docker-devops` skill for production Docker deployment
+- `database-patterns` skill for bot data persistence
+- `prompt-engineering` skill for LLM-powered bot features

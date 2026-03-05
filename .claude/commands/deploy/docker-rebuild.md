@@ -6,8 +6,9 @@ Rebuild Docker containers and verify everything works.
 
 1. Check what changed:
    ```bash
-   git diff --name-only HEAD~1
+   git diff --name-only main...HEAD
    ```
+   If `$ARGUMENTS` contains a service name, rebuild only that service.
 
 2. Determine rebuild scope:
    - Dockerfile changed -> full rebuild with `--no-cache`
@@ -15,10 +16,16 @@ Rebuild Docker containers and verify everything works.
    - requirements.txt / package.json changed -> rebuild app service
    - Source code only -> rebuild with cache (fast)
 
-3. Execute rebuild:
+3. Execute rebuild based on scope:
    ```bash
-   docker compose down
-   docker compose up --build -d
+   # Full rebuild (Dockerfile changed)
+   docker compose down && docker compose build --no-cache && docker compose up -d
+
+   # Standard rebuild (deps or source changed)
+   docker compose down && docker compose up --build -d
+
+   # Single service (if $ARGUMENTS provided)
+   # docker compose up --build -d $ARGUMENTS
    ```
 
 4. Verify:

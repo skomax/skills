@@ -8,7 +8,7 @@ Refactor code while maintaining correctness.
 1. Ensure all tests pass (run full suite)
 2. Check test coverage for the code being refactored
 3. If coverage < 80%, write missing tests FIRST
-4. Create a snapshot: `git stash` or commit current state
+4. Create a snapshot: commit current state as WIP (can squash later)
 
 ### Refactoring Rules
 - **One change at a time**: don't mix refactoring with feature work

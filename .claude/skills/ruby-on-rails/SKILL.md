@@ -255,7 +255,7 @@ FROM ruby:3.3-slim AS base
 WORKDIR /app
 RUN apt-get update -qq && apt-get install -y libpq-dev
 COPY Gemfile Gemfile.lock ./
-RUN bundle install --without development test
+RUN bundle config set --local without 'development test' && bundle install
 
 FROM base AS production
 COPY . .
@@ -264,13 +264,45 @@ EXPOSE 3000
 CMD ["rails", "server", "-b", "0.0.0.0"]
 ```
 
+## Rails 8 Built-in Features
+
+### Solid Queue (default job backend - replaces Sidekiq/Redis)
+```ruby
+# config/environments/production.rb
+config.active_job.queue_adapter = :solid_queue
+config.solid_queue.connects_to = { database: { writing: :queue } }
+```
+
+### Solid Cache (default cache store - replaces Redis/Memcached)
+```ruby
+# config/environments/production.rb
+config.cache_store = :solid_cache_store
+```
+
+### Solid Cable (default Action Cable adapter - DB-backed)
+```ruby
+# config/environments/production.rb
+config.action_cable.adapter = :solid_cable
+```
+
+### Kamal 2 (default deployment tool)
+```bash
+# Deploy to production
+kamal setup    # First time
+kamal deploy   # Subsequent deploys
+kamal rollback # Rollback to previous version
+```
+
+### Propshaft (default asset pipeline - replaces Sprockets)
+Simpler than Sprockets: just serves files from `app/assets/` with digest stamps.
+
 ## Key Gems
 
 | Gem | Purpose |
 |-----|---------|
 | devise | Authentication |
 | pundit | Authorization |
-| sidekiq | Background jobs |
+| solid_queue | Background jobs (Rails 8 default) |
 | pg | PostgreSQL adapter |
 | rspec-rails | Testing |
 | factory_bot_rails | Test factories |
@@ -278,3 +310,5 @@ CMD ["rails", "server", "-b", "0.0.0.0"]
 | tailwindcss-rails | Tailwind CSS integration |
 | turbo-rails | Hotwire Turbo |
 | stimulus-rails | Hotwire Stimulus |
+| kamal | Deployment (Rails 8 default) |
+| propshaft | Asset pipeline (Rails 8 default) |

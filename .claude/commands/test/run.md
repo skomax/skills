@@ -4,6 +4,8 @@ Run project tests with coverage report.
 
 ## Instructions
 
+If `$ARGUMENTS` is provided, use it as a test path or pattern to run specific tests.
+
 1. Detect the project type:
    - `pyproject.toml` or `pytest.ini` -> Python/pytest
    - `package.json` with test script -> JavaScript/TypeScript
@@ -13,7 +15,11 @@ Run project tests with coverage report.
 
 ### Python
 ```bash
+# Full suite
 pytest --cov=src --cov-report=term-missing -v --tb=short
+
+# Specific tests (if $ARGUMENTS provided)
+# pytest $ARGUMENTS -v --tb=short
 ```
 
 ### JavaScript/TypeScript

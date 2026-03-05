@@ -57,7 +57,23 @@ bot/
   states/
 Dockerfile
 docker-compose.yml
-requirements.txt
+pyproject.toml
+.env.example
+```
+
+### Data Processing
+```
+src/
+  pipelines/
+  extractors/
+  transformers/
+  loaders/
+  utils/
+tests/
+notebooks/
+data/raw/, data/processed/
+pyproject.toml
+Dockerfile
 .env.example
 ```
 

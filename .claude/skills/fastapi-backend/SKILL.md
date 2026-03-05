@@ -196,13 +196,13 @@ async def app_exception_handler(request, exc: AppException):
 ## Database (SQLAlchemy Async)
 
 ```python
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncAttrs
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 engine = create_async_engine(settings.DATABASE_URL, pool_size=20, max_overflow=10)
-async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+async_session = async_sessionmaker(engine, expire_on_commit=False)
 
-class Base(DeclarativeBase):
+class Base(AsyncAttrs, DeclarativeBase):
     pass
 ```
 
@@ -235,8 +235,13 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--worker
 | pydantic-settings | Config from env |
 | sqlalchemy[asyncio] | Async ORM |
 | alembic | Migrations |
-| python-jose | JWT tokens |
-| passlib[bcrypt] | Password hashing |
+| PyJWT | JWT tokens |
+| argon2-cffi | Password hashing |
 | httpx | Async HTTP client |
 | celery | Task queue |
 | redis | Cache + broker |
+
+## See Also
+- `database-patterns` skill for SQLAlchemy async setup, caching, migrations
+- `docker-devops` skill for Dockerfile multi-stage builds and deployment
+- `testing` skill for pytest fixtures and API test patterns

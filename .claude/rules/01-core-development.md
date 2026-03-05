@@ -23,7 +23,7 @@ paths:
 - Use consistent naming: snake_case for Python, camelCase for JS/TS, PascalCase for components/classes
 - Keep functions under 50 lines, files under 500 lines
 - Single responsibility: one function = one task, one file = one module/component
-- DRY: extract repeated code into reusable functions after third occurrence
+- DRY: extract repeated code into reusable functions after third occurrence (see `08-anti-duplication.md` for grep-before-create workflow)
 - Explicit over implicit: clear variable names, no magic numbers, typed parameters
 - Error handling: catch specific exceptions, never bare except/catch
 - No hardcoded values: use environment variables or config files for all settings

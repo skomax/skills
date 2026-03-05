@@ -151,7 +151,7 @@ volumes:
 
 ```python
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 
 class Orchestrator:
     def __init__(self, redis_client, db_session):
@@ -173,7 +173,7 @@ class Orchestrator:
         """Check all workers are alive and responsive."""
         for name, worker in self.workers.items():
             last_heartbeat = await self.redis.get(f"worker:{name}:heartbeat")
-            if not last_heartbeat or (datetime.utcnow() - last_heartbeat).seconds > 120:
+            if not last_heartbeat or (datetime.now(timezone.utc) - last_heartbeat).seconds > 120:
                 await self.restart_worker(name)
                 await self.alert(f"Worker {name} restarted due to missed heartbeat")
 
@@ -190,19 +190,21 @@ class Orchestrator:
 
 ### Twitter/X Posting
 ```python
+import asyncio
 import tweepy
 
 class XPoster:
     def __init__(self, api_key, api_secret, access_token, access_secret):
-        auth = tweepy.OAuthHandler(api_key, api_secret)
-        auth.set_access_token(access_token, access_secret)
         self.client = tweepy.Client(
             consumer_key=api_key, consumer_secret=api_secret,
             access_token=access_token, access_token_secret=access_secret
         )
 
     async def post(self, text: str, media_ids: list[str] | None = None):
-        return self.client.create_tweet(text=text, media_ids=media_ids)
+        # tweepy.Client is synchronous - run in thread to avoid blocking event loop
+        return await asyncio.to_thread(
+            self.client.create_tweet, text=text, media_ids=media_ids
+        )
 ```
 
 ### Telegram Channel Posting
@@ -260,14 +262,16 @@ async def get_user_channels(db: AsyncSession, tenant_id: str):
     )
 ```
 
-## Twitter/X API v2 Integration
+## Twitter/X API v2 Integration (with media & threads)
 
-### Full Poster with Media
 ```python
+import asyncio
 import tweepy
-import httpx
 
 class XClient:
+    """Extended Twitter/X client with media upload and thread support.
+    Note: tweepy is synchronous - all API calls wrapped with asyncio.to_thread.
+    """
     def __init__(self, api_key, api_secret, access_token, access_secret, bearer_token):
         self.client = tweepy.Client(
             bearer_token=bearer_token,
@@ -283,10 +287,11 @@ class XClient:
         media_ids = []
         if media_paths:
             for path in media_paths:
-                media = self.api_v1.media_upload(path)
+                media = await asyncio.to_thread(self.api_v1.media_upload, path)
                 media_ids.append(media.media_id)
 
-        response = self.client.create_tweet(
+        response = await asyncio.to_thread(
+            self.client.create_tweet,
             text=text,
             media_ids=media_ids if media_ids else None,
         )
@@ -297,7 +302,8 @@ class XClient:
         results = []
         reply_to = None
         for text in tweets:
-            response = self.client.create_tweet(
+            response = await asyncio.to_thread(
+                self.client.create_tweet,
                 text=text,
                 in_reply_to_tweet_id=reply_to,
             )
@@ -306,8 +312,9 @@ class XClient:
         return results
 
     async def get_user_tweets(self, username: str, max_results: int = 10) -> list:
-        user = self.client.get_user(username=username)
-        tweets = self.client.get_users_tweets(
+        user = await asyncio.to_thread(self.client.get_user, username=username)
+        tweets = await asyncio.to_thread(
+            self.client.get_users_tweets,
             user.data.id, max_results=max_results,
             tweet_fields=["created_at", "public_metrics"],
         )

@@ -20,31 +20,53 @@ description: Prompt engineering for LLM integration. Structured output, chain-of
 4. **Set constraints** - limit output length, format, language
 5. **Use system prompts** - set role and behavior boundaries
 
-## Structured Output Pattern
+## Structured Output with tool_use (recommended)
 
 ```python
 import anthropic
-import json
 
 client = anthropic.Anthropic()
 
-def extract_structured(text: str, schema: dict) -> dict:
-    """Extract structured data according to schema."""
+def extract_structured(text: str, properties: dict) -> dict:
+    """Extract structured data using tool_use for reliable JSON output."""
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2000,
+        tools=[{
+            "name": "extract_data",
+            "description": "Extract structured data from text",
+            "input_schema": {
+                "type": "object",
+                "properties": properties,
+                "required": list(properties.keys()),
+            },
+        }],
+        tool_choice={"type": "tool", "name": "extract_data"},
+        messages=[{
+            "role": "user",
+            "content": f"Extract data from this text:\n\n{text}",
+        }],
+    )
+    # tool_use guarantees valid JSON matching the schema
+    for block in response.content:
+        if block.type == "tool_use":
+            return block.input
+    raise ValueError("No tool_use block in response")
+```
+
+### Fallback: Raw JSON extraction (simpler but less reliable)
+```python
+import json
+
+def extract_raw_json(text: str, schema: dict) -> dict:
+    """Simpler approach - ask for JSON directly. Less reliable than tool_use."""
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=2000,
         system="You are a data extraction assistant. Always return valid JSON matching the provided schema. No explanations, just JSON.",
         messages=[{
             "role": "user",
-            "content": f"""Extract data from the following text according to this schema:
-
-Schema:
-{json.dumps(schema, indent=2)}
-
-Text:
-{text}
-
-Return ONLY valid JSON. No markdown, no explanations."""
+            "content": f"Schema:\n{json.dumps(schema, indent=2)}\n\nText:\n{text}\n\nReturn ONLY valid JSON.",
         }],
     )
     return json.loads(response.content[0].text)
@@ -126,27 +148,38 @@ Return JSON: [{{"severity": "...", "line": N, "issue": "...", "suggestion": "...
 
 ## API Integration Patterns
 
-### Anthropic Claude
+### Anthropic Claude (sync + async)
 ```python
 import anthropic
 
+# Sync client
 client = anthropic.Anthropic()  # Uses ANTHROPIC_API_KEY env var
 
-# Simple message
+# Async client (use in async code - FastAPI, aiogram, etc.)
+async_client = anthropic.AsyncAnthropic()
+
+# Simple message (sync)
 response = client.messages.create(
     model="claude-sonnet-4-20250514",
     max_tokens=1024,
     messages=[{"role": "user", "content": "Hello"}],
 )
 
-# With system prompt and streaming
-with client.messages.stream(
+# Async message
+response = await async_client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Hello"}],
+)
+
+# Streaming (async)
+async with async_client.messages.stream(
     model="claude-sonnet-4-20250514",
     max_tokens=2000,
     system="You are a helpful assistant.",
     messages=[{"role": "user", "content": prompt}],
 ) as stream:
-    for text in stream.text_stream:
+    async for text in stream.text_stream:
         print(text, end="", flush=True)
 
 # Vision (image analysis)
@@ -192,7 +225,24 @@ async def process_batch(items: list[str], prompt_template: str, batch_size: int 
 - Use Haiku for simple tasks (classification, extraction)
 - Use Sonnet for most production workloads
 - Reserve Opus for complex reasoning and coding
-- Cache responses for identical inputs
+- **Use prompt caching** for repeated system prompts / large context (significant savings)
+- Cache responses for identical inputs at application level
 - Batch similar requests
 - Set appropriate max_tokens (don't over-allocate)
 - Use streaming for long responses (faster perceived latency)
+
+### Prompt Caching
+```python
+# Add cache_control to large, repeated content blocks (system prompts, docs)
+response = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=1024,
+    system=[{
+        "type": "text",
+        "text": "You are an expert... <long system prompt with rules and examples>",
+        "cache_control": {"type": "ephemeral"},
+    }],
+    messages=[{"role": "user", "content": user_query}],
+)
+# Cached tokens are billed at 90% discount on subsequent requests
+```

@@ -97,6 +97,43 @@ class TestUserAPI:
         assert "access_token" in response.json()
 ```
 
+### Parametrize (test multiple inputs concisely)
+```python
+import pytest
+
+@pytest.mark.parametrize("input_val, expected", [
+    ("hello", 5),
+    ("", 0),
+    ("a" * 1000, 1000),
+    ("unicode: \u2603", 10),
+])
+def test_string_length(input_val, expected):
+    assert len(input_val) == expected
+
+# Parametrize with IDs for readable output
+@pytest.mark.parametrize("status_code, should_retry", [
+    pytest.param(200, False, id="success"),
+    pytest.param(429, True, id="rate-limited"),
+    pytest.param(500, True, id="server-error"),
+    pytest.param(404, False, id="not-found"),
+])
+def test_retry_logic(status_code, should_retry):
+    assert should_retry_request(status_code) == should_retry
+```
+
+### Fixture Parametrization
+```python
+@pytest.fixture(params=["sqlite+aiosqlite:///:memory:", "postgresql+asyncpg://test:test@localhost/test_db"],
+                ids=["sqlite", "postgres"])
+async def db_engine(request):
+    """Run tests against both SQLite and PostgreSQL."""
+    engine = create_async_engine(request.param)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield engine
+    await engine.dispose()
+```
+
 ### Mocking
 ```python
 from unittest.mock import AsyncMock, patch
@@ -106,6 +143,32 @@ async def test_external_api_failure(self, client):
         mock.side_effect = httpx.TimeoutException("timeout")
         response = await client.get("/api/v1/data")
         assert response.status_code == 503
+
+async def test_external_api_success(self, client):
+    with patch("app.services.external_api.fetch", new_callable=AsyncMock) as mock:
+        mock.return_value = {"data": "test"}
+        response = await client.get("/api/v1/data")
+        assert response.status_code == 200
+        assert response.json()["data"] == "test"
+```
+
+### Test Factories (factory_boy)
+```python
+import factory
+from factory.alchemy import SQLAlchemyModelFactory
+
+class UserFactory(SQLAlchemyModelFactory):
+    class Meta:
+        model = User
+        sqlalchemy_session_persistence = "commit"
+
+    email = factory.Sequence(lambda n: f"user{n}@example.com")
+    name = factory.Faker("name")
+    is_active = True
+
+# Usage in tests:
+# user = UserFactory(session=db_session)
+# users = UserFactory.create_batch(10, session=db_session)
 ```
 
 ## JavaScript/TypeScript Testing
@@ -166,9 +229,37 @@ test('user can login and see dashboard', async ({ page }) => {
 
 ## TDD Checklist
 
-1. [ ] Write failing test for the feature
-2. [ ] Run test - confirm it fails (RED)
-3. [ ] Write minimal code to pass
-4. [ ] Run test - confirm it passes (GREEN)
-5. [ ] Refactor while tests stay green (IMPROVE)
-6. [ ] Check coverage >= 80%
+1. Write failing test for the feature
+2. Run test - confirm it fails (RED)
+3. Write minimal code to pass
+4. Run test - confirm it passes (GREEN)
+5. Refactor while tests stay green (REFACTOR)
+6. Check coverage meets project threshold
+
+## Running Tests
+
+```bash
+# Python - with coverage
+pytest --cov=src --cov-report=term-missing -v
+
+# Python - specific markers
+pytest -m "not slow" -v
+pytest -m integration -v
+
+# Python - specific test/pattern
+pytest tests/unit/test_users.py -v
+pytest -k "test_login" -v
+
+# JS/TS - Vitest
+npx vitest run --coverage
+npx vitest run --reporter=verbose
+
+# E2E - Playwright
+npx playwright test
+npx playwright test --ui  # interactive mode
+```
+
+## See Also
+- `database-patterns` skill for test DB fixtures
+- `fastapi-backend` skill for API test patterns
+- `04-testing-rules.md` for project-level testing policy

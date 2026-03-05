@@ -27,24 +27,36 @@ CREATE TABLE users (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Add indexes for frequently queried columns
-CREATE INDEX idx_users_email ON users(email);
+-- Partial index for common queries (UNIQUE on email already creates an index)
 CREATE INDEX idx_users_active ON users(is_active) WHERE is_active = true;
+
+-- BIGSERIAL example for high-throughput tables
+CREATE TABLE events (
+    id BIGSERIAL PRIMARY KEY,
+    event_type VARCHAR(50) NOT NULL,
+    payload JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
 -- Use TIMESTAMPTZ not TIMESTAMP (timezone-aware)
 -- Use JSONB for flexible schemas, not JSON
 -- Use TEXT for variable-length strings without max
 ```
 
-### SQLAlchemy Async Models
+### SQLAlchemy 2.x Async Models
 ```python
 from sqlalchemy import String, Boolean, DateTime, func
+from sqlalchemy.ext.asyncio import AsyncAttrs, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from datetime import datetime
 import uuid
 
-class Base(DeclarativeBase):
+class Base(AsyncAttrs, DeclarativeBase):
     pass
+
+# Async session factory (use async_sessionmaker, NOT sessionmaker)
+engine = create_async_engine("postgresql+asyncpg://user:pass@localhost/db")
+async_session = async_sessionmaker(engine, expire_on_commit=False)
 
 class User(Base):
     __tablename__ = "users"
@@ -117,9 +129,13 @@ class Cache:
         return value
 
     async def invalidate(self, pattern: str):
-        """Invalidate keys matching pattern."""
-        async for key in self.redis.scan_iter(pattern):
-            await self.redis.delete(key)
+        """Invalidate keys matching pattern. Use pipeline for efficiency."""
+        keys = [key async for key in self.redis.scan_iter(pattern)]
+        if keys:
+            async with self.redis.pipeline() as pipe:
+                for key in keys:
+                    pipe.delete(key)
+                await pipe.execute()
 ```
 
 ### Rate Limiting

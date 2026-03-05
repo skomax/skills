@@ -18,7 +18,7 @@ Follow this strict sequence:
 3. Run the test - confirm it **PASSES**
 4. Run all related tests to ensure no regressions
 
-### Phase 3: IMPROVE (Refactor)
+### Phase 3: REFACTOR
 1. Refactor the code for clarity and quality
 2. Remove duplication
 3. Improve naming

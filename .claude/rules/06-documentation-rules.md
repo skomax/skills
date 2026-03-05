@@ -5,6 +5,11 @@ paths:
   - "**/README*"
   - "**/CHANGELOG*"
   - "**/CLAUDE.md"
+  - "**/*.py"
+  - "**/*.js"
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "**/*.rb"
 ---
 # Documentation Rules
 
@@ -16,6 +21,8 @@ README.md          - Project overview, setup instructions, usage
 CHANGELOG.md       - Version history with dates and changes
 docs/
   architecture.md  - System design, component diagram, data flow
+                     Must include: module map, key functions registry, service boundaries
+                     (see 08-anti-duplication.md for required template)
   api.md           - API endpoints documentation (if applicable)
   deployment.md    - How to deploy, environments, CI/CD
   dev-setup.md     - Developer onboarding, local setup steps

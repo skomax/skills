@@ -1,6 +1,6 @@
 ---
 name: nextjs-frontend
-description: Next.js 15 + React 19 + Tailwind CSS 4 frontend development. App Router, Server Components, shadcn/ui, responsive design, SaaS dashboards.
+description: Next.js 16 + React 19 + Tailwind CSS 4 frontend development. App Router, Server Components, Server Actions, shadcn/ui, responsive design, SaaS dashboards.
 ---
 
 # Next.js Frontend Skill
@@ -16,7 +16,7 @@ description: Next.js 15 + React 19 + Tailwind CSS 4 frontend development. App Ro
 
 | Tech | Version | Purpose |
 |------|---------|---------|
-| Next.js | 15.x | React framework (App Router) |
+| Next.js | 16.x | React framework (App Router) |
 | React | 19.x | UI library |
 | Tailwind CSS | 4.x | Utility-first CSS |
 | shadcn/ui | latest | Component library (copy-paste, not dependency) |
@@ -115,6 +115,35 @@ export function SearchBar({ onSearch }: { onSearch: (q: string) => void }) {
 }
 ```
 
+### Server Actions (data mutations)
+```tsx
+// app/actions/items.ts
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+
+const createSchema = z.object({
+  name: z.string().min(1).max(100),
+  description: z.string().optional(),
+});
+
+export async function createItem(formData: FormData) {
+  const data = createSchema.parse({
+    name: formData.get("name"),
+    description: formData.get("description"),
+  });
+  await db.insert(items).values(data);
+  revalidatePath("/dashboard/items");
+}
+
+// Usage in a Server Component:
+// <form action={createItem}>
+//   <input name="name" />
+//   <button type="submit">Create</button>
+// </form>
+```
+
 ### API Route Handlers
 ```tsx
 // app/api/items/route.ts
@@ -130,14 +159,50 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const data = createSchema.parse(body);
-    const item = await db.items.create({ data });
-    return NextResponse.json(item, { status: 201 });
+    await db.insert(items).values(data);
+    return NextResponse.json({ success: true }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.errors }, { status: 400 });
     }
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
+}
+```
+
+### Metadata API
+```tsx
+// app/dashboard/layout.tsx
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Dashboard",
+  description: "App dashboard",
+};
+
+// Dynamic metadata per page:
+// export async function generateMetadata({ params }): Promise<Metadata> {
+//   const item = await getItem(params.id);
+//   return { title: item.name };
+// }
+```
+
+### Loading & Error States
+```tsx
+// app/dashboard/loading.tsx - shown while Server Component loads
+export default function Loading() {
+  return <div className="animate-pulse">Loading...</div>;
+}
+
+// app/dashboard/error.tsx - catches errors in the segment
+"use client";
+export default function Error({ error, reset }: { error: Error; reset: () => void }) {
+  return (
+    <div>
+      <h2>Something went wrong</h2>
+      <button onClick={reset}>Try again</button>
+    </div>
+  );
 }
 ```
 
@@ -184,7 +249,14 @@ export function useCreateItem() {
 }
 ```
 
-## Tailwind CSS Patterns
+## Tailwind CSS v4 Patterns
+
+**Important**: Tailwind CSS v4 uses CSS-based config instead of `tailwind.config.js`.
+```css
+/* globals.css - v4 style (replaces @tailwind directives) */
+@import "tailwindcss";
+```
+To migrate from v3: `npx @tailwindcss/upgrade` (requires Node.js 20+).
 
 ### Responsive Design
 ```tsx
@@ -208,10 +280,49 @@ export function useCreateItem() {
 
 ## When Next.js vs Other
 
-| Use Case | Framework |
-|----------|-----------|
-| SSR/SSG with React | **Next.js** |
-| SPA dashboard | Next.js or **Vite + React** |
-| Content-heavy site | **Astro** or Next.js |
-| Full-stack Ruby | **Ruby on Rails** with Hotwire |
-| Simple multi-page | Rails or Django templates |
+| Use Case | Framework | Why |
+|----------|-----------|-----|
+| SSR/SSG with React | **Next.js** | Full-stack React, Server Components, built-in routing |
+| SPA dashboard (no SEO) | **Vite + React** | Lighter, faster builds, no SSR overhead |
+| Content-heavy / blog | **Astro** | Ships zero JS by default, any component framework |
+| Full-stack Ruby | **Ruby on Rails** + Hotwire | See `ruby-on-rails` skill |
+| Vue.js ecosystem | **Nuxt.js** | Equivalent to Next.js for Vue |
+| Minimal bundle, perf | **SvelteKit** | Compiler-based, smallest runtime |
+| Static docs / marketing | **Astro** | Static-first, partial hydration |
+| Simple multi-page | Rails or Django templates | Server-rendered, no JS framework needed |
+
+## State Management Decision
+
+| Complexity | Solution | When to Use |
+|------------|----------|-------------|
+| Server state (API data) | **TanStack Query 5** | Caching, revalidation, pagination — already in stack |
+| Simple global state | **Zustand** | Tiny (~1KB), hooks-based, zero boilerplate |
+| Atomic state | **Jotai** | Bottom-up approach, great for independent state pieces |
+| Complex state machines | **XState** | Finite state machines for multi-step flows |
+| Large apps / teams | **Redux Toolkit** | Standard for large codebases, strong devtools |
+| Form state | **React Hook Form** + Zod | Performant forms with schema validation (Zod already in stack) |
+| URL state | **nuqs** | Type-safe search params, shareable state |
+
+Default recommendation: TanStack Query for server state + Zustand for client state.
+
+## Animation Libraries
+
+| Library | Best For | Bundle |
+|---------|----------|--------|
+| **Framer Motion** | React animations, gestures, layout transitions | ~30KB |
+| **GSAP** | Complex timelines, scroll-driven, SVG morphing | ~25KB |
+| **Motion One** | Lightweight alternative to Framer Motion | ~3KB |
+| CSS transitions | Simple hover/focus/appear effects | 0KB |
+
+Default recommendation: CSS transitions for simple effects, Framer Motion for complex interactions.
+
+## CSS Framework Comparison
+
+| Framework | Approach | When to Use |
+|-----------|----------|-------------|
+| **Tailwind CSS 4** | Utility-first | Default choice (in stack) |
+| **CSS Modules** | Scoped CSS files | When Tailwind feels too verbose for complex layouts |
+| **Vanilla Extract** | Zero-runtime CSS-in-TS | Type-safe styling with no runtime cost |
+| **Panda CSS** | Utility + type-safe | Tailwind alternative with better TypeScript integration |
+
+Default recommendation: Tailwind CSS 4 for all projects.

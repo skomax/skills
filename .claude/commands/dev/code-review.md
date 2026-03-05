@@ -4,7 +4,11 @@ Perform a comprehensive code review of recent changes.
 
 ## Instructions
 
-1. Run `git diff HEAD~1` or `git diff --staged` to see changes
+1. Determine what to review:
+   - If `$ARGUMENTS` contains a branch/commit range, use: `git diff $ARGUMENTS`
+   - For branch review: `git diff main...HEAD`
+   - For staged changes: `git diff --staged`
+   - Fallback: `git diff HEAD~1`
 2. For each changed file, analyze:
 
 ### Code Quality
@@ -35,3 +39,5 @@ Perform a comprehensive code review of recent changes.
 3. Rate each issue: **CRITICAL** / **HIGH** / **MEDIUM** / **LOW**
 4. Provide specific fix suggestions with code examples
 5. Summarize: total issues found, blockers for merge, recommendations
+
+See also: `/test:run` to verify tests pass before review

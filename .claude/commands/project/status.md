@@ -28,9 +28,16 @@ pip-audit 2>/dev/null || npm audit 2>/dev/null
 ```
 
 ### 4. Dependencies
-- Check for outdated packages
-- Check for known vulnerabilities
-- Verify lock files are up to date
+```bash
+# Python
+pip list --outdated 2>/dev/null || echo "pip not available"
+
+# JavaScript/TypeScript
+npm outdated 2>/dev/null || echo "npm not available"
+
+# Check lock files exist
+ls poetry.lock package-lock.json Gemfile.lock 2>/dev/null || echo "No lock files found"
+```
 
 ### 5. Docker Health
 ```bash

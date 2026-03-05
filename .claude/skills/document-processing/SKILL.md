@@ -70,14 +70,15 @@ class DocumentProcessor:
 ## LLM Extraction with Anthropic SDK
 
 ```python
+import json
 import anthropic
 
 class LLMExtractor:
     def __init__(self):
-        self.client = anthropic.Anthropic()
+        self.client = anthropic.AsyncAnthropic()
 
     async def extract_invoice(self, text: str) -> dict:
-        response = self.client.messages.create(
+        response = await self.client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=2000,
             messages=[{
@@ -100,7 +101,10 @@ Invoice text:
 {text}"""
             }],
         )
-        return json.loads(response.content[0].text)
+        try:
+            return json.loads(response.content[0].text)
+        except json.JSONDecodeError:
+            raise ValueError(f"LLM returned invalid JSON: {response.content[0].text[:200]}")
 
     async def extract_with_vision(self, image_path: str) -> dict:
         """Process document image directly with Claude Vision."""
@@ -108,7 +112,7 @@ Invoice text:
         with open(image_path, "rb") as f:
             image_data = base64.standard_b64encode(f.read()).decode("utf-8")
 
-        response = self.client.messages.create(
+        response = await self.client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=2000,
             messages=[{
@@ -119,7 +123,10 @@ Invoice text:
                 ]
             }],
         )
-        return json.loads(response.content[0].text)
+        try:
+            return json.loads(response.content[0].text)
+        except json.JSONDecodeError:
+            raise ValueError(f"LLM returned invalid JSON: {response.content[0].text[:200]}")
 ```
 
 ## Export Integrations
@@ -136,18 +143,22 @@ class GoogleSheetsExporter:
 
     async def export(self, data: ExtractedData, template_id: str, user_config: dict):
         """Export to user-specific Google Sheet template."""
+        import asyncio
         sheet_id = user_config["sheet_id"]
         sheet_range = user_config.get("range", "Sheet1!A1")
         field_mapping = user_config["field_mapping"]  # Maps extracted fields to columns
 
         values = self.map_to_template(data, field_mapping)
 
-        self.service.spreadsheets().values().append(
-            spreadsheetId=sheet_id,
-            range=sheet_range,
-            valueInputOption="USER_ENTERED",
-            body={"values": [values]},
-        ).execute()
+        # googleapiclient is synchronous - run in thread to avoid blocking event loop
+        await asyncio.to_thread(
+            self.service.spreadsheets().values().append(
+                spreadsheetId=sheet_id,
+                range=sheet_range,
+                valueInputOption="USER_ENTERED",
+                body={"values": [values]},
+            ).execute
+        )
 ```
 
 ### 1C Integration
@@ -204,7 +215,7 @@ class UserSettings:
     user_id: str
     translate_to: str | None = None        # Target language code
     export_type: str = "google_sheets"      # google_sheets | 1c | bitrix | sap
-    export_config: dict = field(default_factory=dict)  # Per-user export settings
+    export_config: dict = field(default_factory=dict)  # Per-user export settings  # noqa: from dataclasses import field
     store_in_db: bool = True                # Store extracted data in DB
     auto_approve: bool = False              # Skip manual review
     custom_fields: list[str] | None = None  # Additional fields to extract
